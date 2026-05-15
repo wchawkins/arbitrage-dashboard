@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Arbitrage Opportunities Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Live data written by update_data.py. Safe if missing — page falls back to mock data. -->
+<script src="data.js" onerror="console.warn('data.js not found — using synthetic mock data. Run: python update_data.py')"></script>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131a2f;
+    --panel-2: #1a2342;
+    --border: #243056;
+    --text: #e6ecff;
+    --muted: #8a96b8;
+    --accent: #4ea1ff;
+    --accent-2: #7c5cff;
+    --green: #34d399;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --teal: #2dd4bf;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 10% -10%, #1a2550 0%, transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, #2b1a55 0%, transparent 55%),
+                var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(11,16,32,0.7);
+    backdrop-filter: blur(6px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #fff;
+  }
+  h1 { font-size: 18px; margin: 0; letter-spacing: 0.3px; }
+  .sub { font-size: 12px; color: var(--muted); }
+  .tabs { display: flex; gap: 6px; }
+  .tab {
+    padding: 8px 14px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600;
+    transition: all 0.15s ease;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: #fff;
+    background: linear-gradient(180deg, rgba(78,161,255,0.25), rgba(124,92,255,0.15));
+    border-color: rgba(78,161,255,0.55);
+    box-shadow: 0 0 0 1px rgba(78,161,255,0.2) inset;
+  }
+  main { padding: 22px 28px 60px; }
+  .kpis {
+    display: grid; gap: 14px; grid-template-columns: repeat(4, 1fr);
+    margin-bottom: 18px;
+  }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px;
+  }
+  .kpi .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .kpi .value { font-size: 24px; font-weight: 700; margin-top: 6px; }
+  .kpi .delta { font-size: 12px; margin-top: 4px; }
+  .delta.up { color: var(--green); }
+  .delta.down { color: var(--red); }
+
+  .grid {
+    display: grid; gap: 16px;
+  }
+  .row-2 { grid-template-columns: 1fr 1fr; }
+  .row-3 { grid-template-columns: 2fr 1fr; }
+  .row-3b { grid-template-columns: 1.2fr 1fr 1fr; }
+  @media (max-width: 1100px) {
+    .kpis, .row-2, .row-3, .row-3b { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .panel h3 {
+    margin: 0 0 10px; font-size: 14px; letter-spacing: 0.5px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel h3 .hint { color: var(--muted); font-size: 11px; font-weight: 500; }
+
+  /* Filters */
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px;
+  }
+  .filter {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .filter label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .filter input, .filter select {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; font-size: 13px; min-width: 130px;
+  }
+  .filter input[type="range"] { padding: 0; }
+  .filter .range-val { color: var(--accent); font-weight: 700; }
+  .reset {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 8px 14px; cursor: pointer; align-self: end;
+    font-size: 12px; font-weight: 600;
+  }
+  .reset:hover { border-color: var(--accent); }
+
+  /* Table */
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  th, td {
+    text-align: left; padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  th {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.8px; cursor: pointer; user-select: none;
+  }
+  th:hover { color: var(--text); }
+  tbody tr { transition: background 0.1s; cursor: pointer; }
+  tbody tr:hover { background: rgba(78,161,255,0.08); }
+  tbody tr.selected { background: rgba(78,161,255,0.16); }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+  }
+  .pill.cash { background: rgba(45,212,191,0.15); color: var(--teal); }
+  .pill.stock { background: rgba(124,92,255,0.18); color: #b09cff; }
+  .pill.mixed { background: rgba(251,191,36,0.15); color: var(--amber); }
+  .pill.high { background: rgba(52,211,153,0.18); color: var(--green); }
+  .pill.med  { background: rgba(251,191,36,0.15); color: var(--amber); }
+  .pill.low  { background: rgba(248,113,113,0.18); color: var(--red); }
+  .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .scroll { max-height: 520px; overflow: auto; }
+  .scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll::-webkit-scrollbar-thumb { background: #2d3a66; border-radius: 6px; }
+
+  /* Detail panel */
+  .detail { padding: 14px; }
+  .detail .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13px;}
+  .detail .row:last-child { border-bottom: 0; }
+  .detail .row span:first-child { color: var(--muted); }
+
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .empty {
+    text-align: center; color: var(--muted); padding: 24px; font-size: 13px;
+  }
+
+  .badge-z {
+    display: inline-block; padding: 3px 7px; border-radius: 6px;
+    font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
+  }
+  .badge-z.buy { background: rgba(52,211,153,0.18); color: var(--green); }
+  .badge-z.sell { background: rgba(248,113,113,0.18); color: var(--red); }
+  .badge-z.neutral { background: rgba(138,150,184,0.18); color: var(--muted); }
+
+  footer {
+    text-align: center; color: var(--muted); font-size: 11px; padding: 20px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">A</div>
+    <div>
+      <h1>Arbitrage Opportunities Dashboard</h1>
+      <div class="sub" id="data-source">Merger Arbitrage &amp; Statistical Arbitrage scanner</div>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="merger">Merger Arb</button>
+    <button class="tab" data-tab="stat">Statistical Arb</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ========= MERGER ARB VIEW ========= -->
+  <section id="view-merger" class="view active">
+
+    <div class="kpis">
+      <div class="kpi">
+        <div class="label">Active Deals</div>
+        <div class="value" id="m-count">–</div>
+        <div class="delta up">▲ Tracked universe</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Avg Gross Spread</div>
+        <div class="value" id="m-spread">–</div>
+        <div class="delta up" id="m-spread-d">–</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Avg Annualized IRR</div>
+        <div class="value" id="m-irr">–</div>
+        <div class="delta up" id="m-irr-d">–</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Avg Close Probability</div>
+        <div class="value" id="m-prob">–</div>
+        <div class="delta up">Weighted</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter">
+        <label>Search Target / Acquirer</label>
+        <input id="f-search" type="text" placeholder="e.g. Activision" />
+      </div>
+      <div class="filter">
+        <label>Deal Type</label>
+        <select id="f-type">
+          <option value="">All</option>
+          <option>Cash</option>
+          <option>Stock</option>
+          <option>Mixed</option>
+        </select>
+      </div>
+      <div class="filter">
+        <label>Sector</label>
+        <select id="f-sector"><option value="">All</option></select>
+      </div>
+      <div class="filter">
+        <label>Min Close Prob: <span class="range-val" id="f-prob-val">0%</span></label>
+        <input id="f-prob" type="range" min="0" max="100" step="5" value="0" />
+      </div>
+      <div class="filter">
+        <label>Min Spread (%): <span class="range-val" id="f-spread-val">0%</span></label>
+        <input id="f-spread" type="range" min="0" max="20" step="0.5" value="0" />
+      </div>
+      <button class="reset" id="f-reset">Reset</button>
+    </div>
+
+    <div class="grid row-3b" style="margin-bottom: 16px;">
+      <div class="panel">
+        <h3>Spread vs Close Probability <span class="hint">bubble = deal size ($B)</span></h3>
+        <div style="height: 280px;"><canvas id="chartScatter"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Spreads by Sector <span class="hint">avg %</span></h3>
+        <div style="height: 280px;"><canvas id="chartSector"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Deal Type Mix</h3>
+        <div style="height: 280px;"><canvas id="chartType"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid row-3">
+      <div class="panel">
+        <h3>Deal Pipeline <span class="hint" id="m-rows">– deals</span></h3>
+        <div class="scroll">
+          <table id="dealTable">
+            <thead>
+              <tr>
+                <th data-sort="target">Target</th>
+                <th data-sort="acquirer">Acquirer</th>
+                <th data-sort="type">Type</th>
+                <th data-sort="sector">Sector</th>
+                <th data-sort="offer" class="mono">Offer</th>
+                <th data-sort="price" class="mono">Last</th>
+                <th data-sort="spread" class="mono">Spread%</th>
+                <th data-sort="irr" class="mono">Ann IRR</th>
+                <th data-sort="prob" class="mono">P(close)</th>
+                <th data-sort="close">Est. Close</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Deal Detail <span class="hint" id="d-name">select a row</span></h3>
+        <div id="dealDetail" class="detail">
+          <div class="empty">Click a deal in the table to view its profile, payoff distribution, and risk breakdown.</div>
+        </div>
+        <div style="height: 220px; margin-top: 10px;"><canvas id="chartPayoff"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========= STAT ARB VIEW ========= -->
+  <section id="view-stat" class="view">
+
+    <div class="kpis">
+      <div class="kpi">
+        <div class="label">Tracked Pairs</div>
+        <div class="value" id="s-count">–</div>
+        <div class="delta up">Cointegration scan</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Active Signals</div>
+        <div class="value" id="s-signals">–</div>
+        <div class="delta up" id="s-signals-d">|z| ≥ 2</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Avg Half-Life (days)</div>
+        <div class="value" id="s-hl">–</div>
+        <div class="delta up">Mean reversion speed</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Avg Sharpe (sim)</div>
+        <div class="value" id="s-sharpe">–</div>
+        <div class="delta up">Backtest</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter">
+        <label>Search Pair</label>
+        <input id="sf-search" type="text" placeholder="e.g. KO / PEP" />
+      </div>
+      <div class="filter">
+        <label>Sector</label>
+        <select id="sf-sector"><option value="">All</option></select>
+      </div>
+      <div class="filter">
+        <label>Signal</label>
+        <select id="sf-signal">
+          <option value="">All</option>
+          <option>Long Spread</option>
+          <option>Short Spread</option>
+          <option>Neutral</option>
+        </select>
+      </div>
+      <div class="filter">
+        <label>Min |Z-Score|: <span class="range-val" id="sf-z-val">0.0</span></label>
+        <input id="sf-z" type="range" min="0" max="4" step="0.1" value="0" />
+      </div>
+      <div class="filter">
+        <label>Min Correlation: <span class="range-val" id="sf-corr-val">0.50</span></label>
+        <input id="sf-corr" type="range" min="0.5" max="1" step="0.01" value="0.5" />
+      </div>
+      <button class="reset" id="sf-reset">Reset</button>
+    </div>
+
+    <div class="grid row-3b" style="margin-bottom: 16px;">
+      <div class="panel">
+        <h3>Z-Score vs Correlation <span class="hint">bubble = half-life (days)</span></h3>
+        <div style="height: 280px;"><canvas id="chartZScatter"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Z-Score Distribution</h3>
+        <div style="height: 280px;"><canvas id="chartZHist"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Top Sharpe Pairs</h3>
+        <div style="height: 280px;"><canvas id="chartTopSharpe"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid row-3">
+      <div class="panel">
+        <h3>Pair Universe <span class="hint" id="s-rows">– pairs</span></h3>
+        <div class="scroll">
+          <table id="pairTable">
+            <thead>
+              <tr>
+                <th data-sort="pair">Pair</th>
+                <th data-sort="sector">Sector</th>
+                <th data-sort="corr" class="mono">Corr</th>
+                <th data-sort="beta" class="mono">Beta</th>
+                <th data-sort="z" class="mono">Z-Score</th>
+                <th data-sort="hl" class="mono">Half-Life</th>
+                <th data-sort="sharpe" class="mono">Sharpe</th>
+                <th data-sort="signal">Signal</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Pair Detail <span class="hint" id="p-name">select a row</span></h3>
+        <div id="pairDetail" class="detail">
+          <div class="empty">Click a pair to view the price ratio, z-score history, and entry/exit zones.</div>
+        </div>
+        <div style="height: 200px; margin-top: 8px;"><canvas id="chartSpread"></canvas></div>
+        <div style="height: 140px; margin-top: 8px;"><canvas id="chartZHistory"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Data is simulated for demonstration purposes. © Arbitrage Scanner
+</footer>
+
+<script>
+/* ============================================================
+   GLOBAL CHART DEFAULTS
+   ============================================================ */
+Chart.defaults.color = '#8a96b8';
+Chart.defaults.borderColor = '#243056';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto";
+
+/* ============================================================
+   SEEDED RNG (deterministic mock data)
+   ============================================================ */
+function mulberry32(seed) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(42);
+const rng2 = mulberry32(99);
+const randn = (r) => { // Box-Muller
+  const u = 1 - r(); const v = r();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+};
+
+/* ============================================================
+   MERGER ARB MOCK DATA
+   ============================================================ */
+const SECTORS = ['Technology', 'Healthcare', 'Financials', 'Energy', 'Consumer', 'Industrials', 'Communications', 'Materials'];
+const DEAL_TYPES = ['Cash', 'Stock', 'Mixed'];
+
+const DEAL_SEEDS = [
+  ['ATVI', 'Activision Blizzard', 'MSFT', 'Microsoft', 'Technology', 'Cash'],
+  ['VMW', 'VMware', 'AVGO', 'Broadcom', 'Technology', 'Mixed'],
+  ['SPLK', 'Splunk', 'CSCO', 'Cisco', 'Technology', 'Cash'],
+  ['HZNP', 'Horizon Therapeutics', 'AMGN', 'Amgen', 'Healthcare', 'Cash'],
+  ['SGEN', 'Seagen', 'PFE', 'Pfizer', 'Healthcare', 'Cash'],
+  ['FRC', 'First Republic', 'JPM', 'JPMorgan', 'Financials', 'Cash'],
+  ['PXD', 'Pioneer Natural', 'XOM', 'ExxonMobil', 'Energy', 'Stock'],
+  ['HES', 'Hess Corp', 'CVX', 'Chevron', 'Energy', 'Stock'],
+  ['ANSS', 'ANSYS', 'SNPS', 'Synopsys', 'Technology', 'Mixed'],
+  ['JNPR', 'Juniper Networks', 'HPE', 'HP Enterprise', 'Technology', 'Cash'],
+  ['CTLT', 'Catalent', 'NVO', 'Novo Holdings', 'Healthcare', 'Cash'],
+  ['IRBT', 'iRobot', 'AMZN', 'Amazon', 'Consumer', 'Cash'],
+  ['CCEP', 'Coca-Cola EP', 'KO', 'Coca-Cola', 'Consumer', 'Cash'],
+  ['NUAN', 'Nuance Comm', 'MSFT', 'Microsoft', 'Technology', 'Cash'],
+  ['WLTW', 'Willis Towers', 'AON', 'Aon', 'Financials', 'Stock'],
+  ['DRE', 'Duke Realty', 'PLD', 'Prologis', 'Industrials', 'Stock'],
+  ['CERN', 'Cerner Corp', 'ORCL', 'Oracle', 'Healthcare', 'Cash'],
+  ['XLNX', 'Xilinx', 'AMD', 'Adv Micro Dev', 'Technology', 'Stock'],
+  ['UTX', 'United Tech', 'RTX', 'Raytheon', 'Industrials', 'Stock'],
+  ['CXO', 'Concho Resources', 'COP', 'ConocoPhillips', 'Energy', 'Stock'],
+  ['CHNG', 'Change Healthcare', 'UNH', 'UnitedHealth', 'Healthcare', 'Cash'],
+  ['TWTR', 'Twitter', 'X Holdings', 'X Holdings', 'Communications', 'Cash'],
+  ['ZNGA', 'Zynga', 'TTWO', 'Take-Two', 'Communications', 'Mixed'],
+  ['ATUS', 'Altice USA', 'PrivCo', 'Private Buyer', 'Communications', 'Cash'],
+  ['MTCH', 'Match Group', 'PrivCo', 'Consortium', 'Communications', 'Cash'],
+  ['CTXS', 'Citrix', 'Vista Equity', 'Vista Equity', 'Technology', 'Cash'],
+  ['NLSN', 'Nielsen', 'Elliott Mgmt', 'Elliott Mgmt', 'Communications', 'Cash'],
+  ['MGM', 'MGM Growth', 'VICI', 'VICI Props', 'Financials', 'Mixed'],
+  ['STOR', 'STORE Capital', 'GIC', 'GIC/Oak', 'Financials', 'Cash'],
+  ['BKR', 'Black Knight', 'ICE', 'Intercontinental', 'Financials', 'Mixed'],
+];
+
+const MOCK_MERGER_DEALS = DEAL_SEEDS.map((d, i) => {
+  const [tkr, target, acqTkr, acquirer, sector, type] = d;
+  const offer = 30 + rng() * 250;
+  const spreadPct = 0.5 + rng() * 9; // 0.5% to 9.5%
+  const last = offer * (1 - spreadPct / 100);
+  const daysToClose = Math.round(40 + rng() * 280);
+  const closeDate = new Date(Date.now() + daysToClose * 86400000);
+  // Probability skewed by spread (wider spread → lower prob)
+  const prob = Math.max(30, Math.min(98, Math.round(95 - spreadPct * 4 + (rng() - 0.5) * 18)));
+  const irr = ((offer / last - 1) * (365 / daysToClose)) * 100;
+  const dealSize = Math.round((1 + rng() * 80) * 10) / 10; // $B
+  const breakPrice = last * (0.55 + rng() * 0.25); // downside if deal breaks
+  const status = ['Definitive Agreement', 'Regulatory Review', 'Shareholder Vote', 'Antitrust Filing'][Math.floor(rng()*4)];
+  const risks = [];
+  if (spreadPct > 5) risks.push('Antitrust scrutiny');
+  if (type === 'Stock') risks.push('Acquirer share volatility');
+  if (sector === 'Technology') risks.push('CFIUS / regulatory');
+  if (sector === 'Healthcare') risks.push('FTC review');
+  if (prob < 70) risks.push('Financing condition');
+  if (risks.length === 0) risks.push('Routine closing conditions');
+
+  return {
+    id: i,
+    ticker: tkr, target, acquirer, acqTkr, sector, type,
+    offer: +offer.toFixed(2),
+    last: +last.toFixed(2),
+    spread: +spreadPct.toFixed(2),
+    irr: +irr.toFixed(1),
+    prob,
+    daysToClose,
+    closeDate: closeDate.toISOString().slice(0,10),
+    dealSize,
+    breakPrice: +breakPrice.toFixed(2),
+    status,
+    risks
+  };
+});
+
+/* ============================================================
+   STAT ARB MOCK DATA
+   ============================================================ */
+const PAIR_SEEDS = [
+  ['KO','PEP','Consumer'], ['XOM','CVX','Energy'], ['MA','V','Financials'],
+  ['MSFT','ORCL','Technology'], ['HD','LOW','Consumer'], ['UPS','FDX','Industrials'],
+  ['F','GM','Consumer'], ['JPM','BAC','Financials'], ['WMT','COST','Consumer'],
+  ['T','VZ','Communications'], ['PFE','MRK','Healthcare'], ['LLY','BMY','Healthcare'],
+  ['NEE','DUK','Energy'], ['CAT','DE','Industrials'], ['BA','LMT','Industrials'],
+  ['NKE','LULU','Consumer'], ['CVS','WBA','Healthcare'], ['GS','MS','Financials'],
+  ['AMD','INTC','Technology'], ['NVDA','AMD','Technology'], ['AAPL','MSFT','Technology'],
+  ['META','GOOGL','Communications'], ['NFLX','DIS','Communications'], ['UNH','ANTM','Healthcare'],
+  ['SLB','HAL','Energy'], ['OXY','MRO','Energy'], ['C','WFC','Financials'],
+  ['SBUX','MCD','Consumer'], ['DG','DLTR','Consumer'], ['ADBE','CRM','Technology'],
+  ['TGT','WMT','Consumer'], ['ABT','TMO','Healthcare'], ['BLK','TROW','Financials'],
+  ['SO','D','Energy'], ['EMR','HON','Industrials'], ['LIN','APD','Materials'],
+];
+
+function genPriceSeries(len, seed, mu=0.0003, sigma=0.015, start=100) {
+  const r = mulberry32(seed);
+  const out = [start];
+  for (let i = 1; i < len; i++) {
+    const eps = Math.sqrt(-2*Math.log(1-r())) * Math.cos(2*Math.PI*r());
+    out.push(out[i-1] * Math.exp(mu + sigma * eps));
+  }
+  return out;
+}
+
+const PAIR_HISTORY_LEN = 180;
+
+const MOCK_STAT_PAIRS = PAIR_SEEDS.map((p, i) => {
+  const [a, b, sector] = p;
+  const seedA = 100 + i * 7;
+  const seedB = 200 + i * 11;
+  const beta = 0.6 + rng() * 1.0;
+  const seriesA = genPriceSeries(PAIR_HISTORY_LEN, seedA, 0.0003 + (rng()-0.5)*0.0006, 0.012 + rng()*0.012);
+  // Construct B as cointegrated with A plus mean-reverting residual + noise
+  const halfLife = Math.round(5 + rng() * 35);
+  const phi = Math.exp(-Math.log(2) / halfLife);
+  const noiseScale = 0.6 + rng() * 0.8;
+  let resid = 0;
+  const seriesB = [];
+  const r2 = mulberry32(seedB);
+  for (let t = 0; t < PAIR_HISTORY_LEN; t++) {
+    const eps = Math.sqrt(-2*Math.log(1-r2())) * Math.cos(2*Math.PI*r2());
+    resid = phi * resid + noiseScale * eps;
+    seriesB.push((seriesA[t] * beta) + 20 + resid);
+  }
+  // Compute spread = A - beta*B (using estimated beta)
+  const spread = seriesA.map((a, idx) => a - beta * seriesB[idx]);
+  const mean = spread.reduce((s,x)=>s+x,0)/spread.length;
+  const sd = Math.sqrt(spread.reduce((s,x)=>s+(x-mean)**2,0)/spread.length);
+  const zSeries = spread.map(x => (x - mean)/sd);
+  const z = zSeries[zSeries.length-1];
+  // Correlation of returns
+  const retA = seriesA.slice(1).map((v,k)=> Math.log(v/seriesA[k]));
+  const retB = seriesB.slice(1).map((v,k)=> Math.log(v/seriesB[k]));
+  const corr = pearson(retA, retB);
+  const sharpe = +(1.5 - Math.abs(z - 1.5)*0.4 + (rng()-0.5)*0.8).toFixed(2);
+  let signal;
+  if (z > 2) signal = 'Short Spread';
+  else if (z < -2) signal = 'Long Spread';
+  else signal = 'Neutral';
+  return {
+    id: i, ticker1: a, ticker2: b, sector,
+    beta: +beta.toFixed(2),
+    corr: +corr.toFixed(3),
+    z: +z.toFixed(2),
+    hl: halfLife,
+    sharpe: +sharpe.toFixed(2),
+    signal,
+    seriesA, seriesB, spread, zSeries
+  };
+});
+
+function pearson(x, y) {
+  const n = x.length;
+  const mx = x.reduce((s,v)=>s+v,0)/n;
+  const my = y.reduce((s,v)=>s+v,0)/n;
+  let num=0, dx=0, dy=0;
+  for (let i=0;i<n;i++){ const a=x[i]-mx, b=y[i]-my; num+=a*b; dx+=a*a; dy+=b*b; }
+  return num / Math.sqrt(dx*dy);
+}
+
+/* ============================================================
+   LIVE DATA — prefer data.js (written by update_data.py) when present.
+   Falls back to the mock generator above if it's missing.
+   ============================================================ */
+const LIVE = (typeof window !== 'undefined' && window.DASHBOARD_DATA) ? window.DASHBOARD_DATA : null;
+const MERGER_DEALS = LIVE?.deals ?? MOCK_MERGER_DEALS;
+const STAT_PAIRS   = LIVE?.pairs ?? MOCK_STAT_PAIRS;
+
+(function annotateSource(){
+  const el = document.getElementById('data-source');
+  if (!el) return;
+  if (LIVE) {
+    const when = new Date(LIVE.generatedAt);
+    const stamp = isNaN(when) ? LIVE.generatedAt : when.toLocaleString();
+    el.innerHTML = `Live data — ${LIVE.deals.length} deals · ${LIVE.pairs.length} pairs · updated ${stamp}`;
+    el.style.color = '#34d399';
+  } else {
+    el.innerHTML = 'Synthetic mock data — run <code style="color:#4ea1ff">python update_data.py</code> to load live prices';
+  }
+})();
+
+/* ============================================================
+   TABS
+   ============================================================ */
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + btn.dataset.tab).classList.add('active');
+    // Resize charts on tab change to fix sizing
+    setTimeout(() => Chart.helpers && Chart.instances && Object.values(Chart.instances).forEach(c=>c.resize()), 50);
+  });
+});
+
+/* ============================================================
+   MERGER ARB — RENDERING
+   ============================================================ */
+const sectorSel = document.getElementById('f-sector');
+[...new Set(MERGER_DEALS.map(d => d.sector))].sort().forEach(s => {
+  const o = document.createElement('option'); o.textContent = s; sectorSel.appendChild(o);
+});
+
+let mergerSort = { key: 'irr', dir: -1 };
+let selectedDealId = null;
+
+const filters = {
+  search: '', type: '', sector: '', minProb: 0, minSpread: 0
+};
+
+function applyMergerFilters() {
+  return MERGER_DEALS.filter(d => {
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      if (!(d.target.toLowerCase().includes(q) || d.acquirer.toLowerCase().includes(q) || d.ticker.toLowerCase().includes(q))) return false;
+    }
+    if (filters.type && d.type !== filters.type) return false;
+    if (filters.sector && d.sector !== filters.sector) return false;
+    if (d.prob < filters.minProb) return false;
+    if (d.spread < filters.minSpread) return false;
+    return true;
+  }).sort((a,b) => {
+    const k = mergerSort.key;
+    let va = a[k], vb = b[k];
+    if (k === 'target') { va = a.target; vb = b.target; }
+    if (k === 'acquirer') { va = a.acquirer; vb = b.acquirer; }
+    if (k === 'close') { va = a.closeDate; vb = b.closeDate; }
+    if (typeof va === 'string') return va.localeCompare(vb) * mergerSort.dir;
+    return (va - vb) * mergerSort.dir;
+  });
+}
+
+function fmtUSD(x) { return '$' + x.toFixed(2); }
+function fmtPct(x) { return x.toFixed(2) + '%'; }
+function probPill(p) {
+  const cls = p >= 85 ? 'high' : p >= 65 ? 'med' : 'low';
+  return `<span class="pill ${cls}">${p}%</span>`;
+}
+function typePill(t) { return `<span class="pill ${t.toLowerCase()}">${t}</span>`; }
+
+function renderMergerTable() {
+  const data = applyMergerFilters();
+  const tb = document.querySelector('#dealTable tbody');
+  tb.innerHTML = '';
+  data.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.dataset.id = d.id;
+    if (d.id === selectedDealId) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td><strong>${d.target}</strong><br><span style="color:var(--muted);font-size:11px">${d.ticker}</span></td>
+      <td>${d.acquirer}</td>
+      <td>${typePill(d.type)}</td>
+      <td>${d.sector}</td>
+      <td class="mono">${fmtUSD(d.offer)}</td>
+      <td class="mono">${fmtUSD(d.last)}</td>
+      <td class="mono" style="color:${d.spread>5?'var(--amber)':'var(--green)'}">${fmtPct(d.spread)}</td>
+      <td class="mono" style="color:var(--accent)"><strong>${d.irr.toFixed(1)}%</strong></td>
+      <td class="mono">${probPill(d.prob)}</td>
+      <td style="font-size:12px">${d.closeDate}</td>
+    `;
+    tr.addEventListener('click', () => { selectedDealId = d.id; renderMergerTable(); renderDealDetail(d); });
+    tb.appendChild(tr);
+  });
+  document.getElementById('m-rows').textContent = `${data.length} deals`;
+  updateMergerKPIs(data);
+  updateMergerCharts(data);
+}
+
+function updateMergerKPIs(data) {
+  document.getElementById('m-count').textContent = data.length;
+  if (!data.length) {
+    document.getElementById('m-spread').textContent = '–';
+    document.getElementById('m-irr').textContent = '–';
+    document.getElementById('m-prob').textContent = '–';
+    return;
+  }
+  const avgSpread = data.reduce((s,d)=>s+d.spread,0)/data.length;
+  const avgIRR = data.reduce((s,d)=>s+d.irr,0)/data.length;
+  const avgProb = data.reduce((s,d)=>s+d.prob,0)/data.length;
+  document.getElementById('m-spread').textContent = avgSpread.toFixed(2) + '%';
+  document.getElementById('m-irr').textContent = avgIRR.toFixed(1) + '%';
+  document.getElementById('m-prob').textContent = avgProb.toFixed(0) + '%';
+  document.getElementById('m-spread-d').textContent = `Gross of fees`;
+  document.getElementById('m-irr-d').textContent = `risk-adjusted view`;
+}
+
+/* ----- merger charts ----- */
+let chartScatter, chartSector, chartType, chartPayoff;
+
+function updateMergerCharts(data) {
+  // Scatter: x=prob, y=spread, r=dealSize
+  const pts = data.map(d => ({
+    x: d.prob, y: d.spread, r: Math.max(4, Math.sqrt(d.dealSize) * 3),
+    label: `${d.target} → ${d.acquirer}`
+  }));
+  if (!chartScatter) {
+    chartScatter = new Chart(document.getElementById('chartScatter'), {
+      type: 'bubble',
+      data: { datasets: [{
+        data: pts,
+        backgroundColor: ctx => {
+          const v = ctx.raw.y;
+          return v > 5 ? 'rgba(251,191,36,0.55)' : v > 3 ? 'rgba(78,161,255,0.55)' : 'rgba(52,211,153,0.55)';
+        },
+        borderColor: 'rgba(255,255,255,0.3)'
+      }]},
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: (ctx) => `${ctx.raw.label} — Prob ${ctx.raw.x}%, Spread ${ctx.raw.y}%`
+          }}
+        },
+        scales: {
+          x: { title: { display: true, text: 'Close Probability (%)' }, min: 25, max: 100, grid: { color: '#1f294a' } },
+          y: { title: { display: true, text: 'Gross Spread (%)' }, min: 0, grid: { color: '#1f294a' } }
+        }
+      }
+    });
+  } else {
+    chartScatter.data.datasets[0].data = pts;
+    chartScatter.update();
+  }
+
+  // Sector bar
+  const sectorMap = {};
+  data.forEach(d => {
+    if (!sectorMap[d.sector]) sectorMap[d.sector] = { sum: 0, n: 0 };
+    sectorMap[d.sector].sum += d.spread;
+    sectorMap[d.sector].n += 1;
+  });
+  const labels = Object.keys(sectorMap);
+  const vals = labels.map(l => sectorMap[l].sum / sectorMap[l].n);
+
+  if (!chartSector) {
+    chartSector = new Chart(document.getElementById('chartSector'), {
+      type: 'bar',
+      data: { labels, datasets: [{ data: vals, backgroundColor: 'rgba(78,161,255,0.6)', borderColor: 'rgba(78,161,255,1)', borderWidth: 1 }] },
+      options: {
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { color: '#1f294a' }, title: { display: true, text: 'Avg Spread (%)' } }, y: { grid: { display: false } } }
+      }
+    });
+  } else {
+    chartSector.data.labels = labels;
+    chartSector.data.datasets[0].data = vals;
+    chartSector.update();
+  }
+
+  // Deal type doughnut
+  const tMap = { Cash: 0, Stock: 0, Mixed: 0 };
+  data.forEach(d => tMap[d.type]++);
+  if (!chartType) {
+    chartType = new Chart(document.getElementById('chartType'), {
+      type: 'doughnut',
+      data: { labels: Object.keys(tMap), datasets: [{
+        data: Object.values(tMap),
+        backgroundColor: ['rgba(45,212,191,0.7)','rgba(124,92,255,0.7)','rgba(251,191,36,0.7)'],
+        borderColor: '#131a2f', borderWidth: 2
+      }]},
+      options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+    });
+  } else {
+    chartType.data.datasets[0].data = Object.values(tMap);
+    chartType.update();
+  }
+}
+
+function renderDealDetail(d) {
+  document.getElementById('d-name').textContent = `${d.target} (${d.ticker}) → ${d.acquirer}`;
+  const expReturn = (d.prob/100) * (d.offer - d.last) + (1 - d.prob/100) * (d.breakPrice - d.last);
+  const expReturnPct = (expReturn / d.last * 100).toFixed(2);
+  const downside = ((d.breakPrice / d.last - 1) * 100).toFixed(1);
+  const upside = ((d.offer / d.last - 1) * 100).toFixed(1);
+  document.getElementById('dealDetail').innerHTML = `
+    <div class="row"><span>Status</span><span><strong>${d.status}</strong></span></div>
+    <div class="row"><span>Deal Size</span><span class="mono">$${d.dealSize.toFixed(1)}B</span></div>
+    <div class="row"><span>Offer / Last</span><span class="mono">$${d.offer} / $${d.last}</span></div>
+    <div class="row"><span>Spread</span><span class="mono" style="color:var(--amber)">${d.spread}%</span></div>
+    <div class="row"><span>Days to Close</span><span class="mono">${d.daysToClose} (${d.closeDate})</span></div>
+    <div class="row"><span>Annualized IRR</span><span class="mono" style="color:var(--accent)"><strong>${d.irr.toFixed(1)}%</strong></span></div>
+    <div class="row"><span>P(close)</span><span>${probPill(d.prob)}</span></div>
+    <div class="row"><span>Break Price (est)</span><span class="mono" style="color:var(--red)">$${d.breakPrice} (${downside}%)</span></div>
+    <div class="row"><span>Expected Return</span><span class="mono" style="color:${expReturn>=0?'var(--green)':'var(--red)'}"><strong>${expReturnPct}%</strong></span></div>
+    <div class="row"><span>Key Risks</span><span style="text-align:right;max-width:60%">${d.risks.join(', ')}</span></div>
+  `;
+  // Payoff chart: bar of upside vs downside scenarios
+  const data = {
+    labels: ['Deal Breaks', 'Current', 'Deal Closes'],
+    datasets: [{
+      label: 'Payoff %',
+      data: [+downside, 0, +upside],
+      backgroundColor: ['rgba(248,113,113,0.7)','rgba(138,150,184,0.5)','rgba(52,211,153,0.7)'],
+      borderWidth: 0
+    }]
+  };
+  if (!chartPayoff) {
+    chartPayoff = new Chart(document.getElementById('chartPayoff'), {
+      type: 'bar',
+      data,
+      options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, title: { display: true, text: 'Payoff Scenarios (%)', color: '#e6ecff' }},
+        scales: { y: { grid: { color: '#1f294a' }, title: { display: true, text: '%' } }, x: { grid: { display: false } } }
+      }
+    });
+  } else {
+    chartPayoff.data = data; chartPayoff.update();
+  }
+}
+
+/* ----- merger filter handlers ----- */
+document.getElementById('f-search').addEventListener('input', e => { filters.search = e.target.value; renderMergerTable(); });
+document.getElementById('f-type').addEventListener('change', e => { filters.type = e.target.value; renderMergerTable(); });
+document.getElementById('f-sector').addEventListener('change', e => { filters.sector = e.target.value; renderMergerTable(); });
+document.getElementById('f-prob').addEventListener('input', e => {
+  filters.minProb = +e.target.value;
+  document.getElementById('f-prob-val').textContent = e.target.value + '%';
+  renderMergerTable();
+});
+document.getElementById('f-spread').addEventListener('input', e => {
+  filters.minSpread = +e.target.value;
+  document.getElementById('f-spread-val').textContent = e.target.value + '%';
+  renderMergerTable();
+});
+document.getElementById('f-reset').addEventListener('click', () => {
+  Object.assign(filters, { search:'', type:'', sector:'', minProb:0, minSpread:0 });
+  document.getElementById('f-search').value = '';
+  document.getElementById('f-type').value = '';
+  document.getElementById('f-sector').value = '';
+  document.getElementById('f-prob').value = 0;
+  document.getElementById('f-spread').value = 0;
+  document.getElementById('f-prob-val').textContent = '0%';
+  document.getElementById('f-spread-val').textContent = '0%';
+  renderMergerTable();
+});
+document.querySelectorAll('#dealTable th').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (mergerSort.key === key) mergerSort.dir *= -1;
+    else { mergerSort.key = key; mergerSort.dir = -1; }
+    renderMergerTable();
+  });
+});
+
+/* ============================================================
+   STAT ARB — RENDERING
+   ============================================================ */
+const sSectorSel = document.getElementById('sf-sector');
+[...new Set(STAT_PAIRS.map(p => p.sector))].sort().forEach(s => {
+  const o = document.createElement('option'); o.textContent = s; sSectorSel.appendChild(o);
+});
+
+let pairSort = { key: 'z', dir: -1 };
+let selectedPairId = null;
+const sFilters = { search:'', sector:'', signal:'', minZ:0, minCorr:0.5 };
+
+function applyPairFilters() {
+  return STAT_PAIRS.filter(p => {
+    const pairName = `${p.ticker1}/${p.ticker2}`;
+    if (sFilters.search && !pairName.toLowerCase().includes(sFilters.search.toLowerCase())) return false;
+    if (sFilters.sector && p.sector !== sFilters.sector) return false;
+    if (sFilters.signal && p.signal !== sFilters.signal) return false;
+    if (Math.abs(p.z) < sFilters.minZ) return false;
+    if (p.corr < sFilters.minCorr) return false;
+    return true;
+  }).sort((a,b) => {
+    const k = pairSort.key;
+    let va, vb;
+    if (k === 'pair') { va = a.ticker1; vb = b.ticker1; return va.localeCompare(vb)*pairSort.dir; }
+    if (k === 'sector') return a.sector.localeCompare(b.sector)*pairSort.dir;
+    if (k === 'signal') return a.signal.localeCompare(b.signal)*pairSort.dir;
+    if (k === 'z') { va = Math.abs(a.z); vb = Math.abs(b.z); }
+    else { va = a[k]; vb = b[k]; }
+    return (va - vb) * pairSort.dir;
+  });
+}
+
+function zBadge(z) {
+  if (z >= 2) return `<span class="badge-z sell">${z.toFixed(2)}</span>`;
+  if (z <= -2) return `<span class="badge-z buy">${z.toFixed(2)}</span>`;
+  return `<span class="badge-z neutral">${z.toFixed(2)}</span>`;
+}
+function signalPill(s) {
+  if (s === 'Long Spread') return `<span class="pill high">▲ Long</span>`;
+  if (s === 'Short Spread') return `<span class="pill low">▼ Short</span>`;
+  return `<span class="pill med">– Wait</span>`;
+}
+
+function renderPairTable() {
+  const data = applyPairFilters();
+  const tb = document.querySelector('#pairTable tbody');
+  tb.innerHTML = '';
+  data.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.dataset.id = p.id;
+    if (p.id === selectedPairId) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td><strong>${p.ticker1} / ${p.ticker2}</strong></td>
+      <td>${p.sector}</td>
+      <td class="mono">${p.corr.toFixed(2)}</td>
+      <td class="mono">${p.beta.toFixed(2)}</td>
+      <td class="mono">${zBadge(p.z)}</td>
+      <td class="mono">${p.hl}d</td>
+      <td class="mono" style="color:${p.sharpe>1?'var(--green)':p.sharpe>0?'var(--text)':'var(--red)'}"><strong>${p.sharpe.toFixed(2)}</strong></td>
+      <td>${signalPill(p.signal)}</td>
+    `;
+    tr.addEventListener('click', () => { selectedPairId = p.id; renderPairTable(); renderPairDetail(p); });
+    tb.appendChild(tr);
+  });
+  document.getElementById('s-rows').textContent = `${data.length} pairs`;
+  updateStatKPIs(data);
+  updateStatCharts(data);
+}
+
+function updateStatKPIs(data) {
+  document.getElementById('s-count').textContent = data.length;
+  const sig = data.filter(p => Math.abs(p.z) >= 2);
+  document.getElementById('s-signals').textContent = sig.length;
+  if (!data.length) {
+    document.getElementById('s-hl').textContent = '–';
+    document.getElementById('s-sharpe').textContent = '–';
+    return;
+  }
+  const avgHL = data.reduce((s,p)=>s+p.hl,0)/data.length;
+  const avgSh = data.reduce((s,p)=>s+p.sharpe,0)/data.length;
+  document.getElementById('s-hl').textContent = avgHL.toFixed(1);
+  document.getElementById('s-sharpe').textContent = avgSh.toFixed(2);
+  document.getElementById('s-signals-d').textContent = `${sig.length} pairs with |z| ≥ 2`;
+}
+
+/* stat charts */
+let chartZScatter, chartZHist, chartTopSharpe, chartSpread, chartZHistory;
+
+function updateStatCharts(data) {
+  // Z-Score vs Corr bubble
+  const pts = data.map(p => ({
+    x: p.corr, y: p.z, r: Math.max(4, Math.min(18, p.hl * 0.4)),
+    label: `${p.ticker1}/${p.ticker2}`
+  }));
+  if (!chartZScatter) {
+    chartZScatter = new Chart(document.getElementById('chartZScatter'), {
+      type: 'bubble',
+      data: { datasets: [{
+        data: pts,
+        backgroundColor: ctx => {
+          const z = ctx.raw.y;
+          if (z >= 2) return 'rgba(248,113,113,0.55)';
+          if (z <= -2) return 'rgba(52,211,153,0.55)';
+          return 'rgba(138,150,184,0.4)';
+        },
+        borderColor: 'rgba(255,255,255,0.25)'
+      }]},
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `${ctx.raw.label} — corr ${ctx.raw.x}, z ${ctx.raw.y}` } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Correlation' }, min: 0.4, max: 1, grid: { color: '#1f294a' } },
+          y: { title: { display: true, text: 'Z-Score' }, min: -4, max: 4, grid: { color: '#1f294a' } }
+        }
+      }
+    });
+  } else {
+    chartZScatter.data.datasets[0].data = pts;
+    chartZScatter.update();
+  }
+
+  // Z histogram
+  const bins = [-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3];
+  const counts = new Array(bins.length-1).fill(0);
+  data.forEach(p => {
+    for (let i = 0; i < bins.length-1; i++) {
+      if (p.z >= bins[i] && p.z < bins[i+1]) { counts[i]++; break; }
+    }
+  });
+  const histLabels = bins.slice(0,-1).map((b,i)=> `${b.toFixed(1)}`);
+  if (!chartZHist) {
+    chartZHist = new Chart(document.getElementById('chartZHist'), {
+      type: 'bar',
+      data: { labels: histLabels, datasets: [{
+        data: counts,
+        backgroundColor: histLabels.map((_,i)=>{
+          const b = bins[i];
+          if (b >= 2) return 'rgba(248,113,113,0.7)';
+          if (b < -2) return 'rgba(52,211,153,0.7)';
+          if (Math.abs(b) < 1) return 'rgba(138,150,184,0.5)';
+          return 'rgba(78,161,255,0.6)';
+        })
+      }]},
+      options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false }, title: { display: true, text: 'Z-Score bin' } }, y: { grid: { color: '#1f294a' }, title: { display: true, text: '# pairs' } } }
+      }
+    });
+  } else {
+    chartZHist.data.labels = histLabels;
+    chartZHist.data.datasets[0].data = counts;
+    chartZHist.update();
+  }
+
+  // Top Sharpe
+  const top = [...data].sort((a,b)=>b.sharpe-a.sharpe).slice(0,8);
+  if (!chartTopSharpe) {
+    chartTopSharpe = new Chart(document.getElementById('chartTopSharpe'), {
+      type: 'bar',
+      data: {
+        labels: top.map(p=>`${p.ticker1}/${p.ticker2}`),
+        datasets: [{ data: top.map(p=>p.sharpe), backgroundColor: 'rgba(45,212,191,0.6)', borderColor: 'rgba(45,212,191,1)', borderWidth: 1 }]
+      },
+      options: {
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { color: '#1f294a' }, title: { display: true, text: 'Sharpe' } }, y: { grid: { display: false } } }
+      }
+    });
+  } else {
+    chartTopSharpe.data.labels = top.map(p=>`${p.ticker1}/${p.ticker2}`);
+    chartTopSharpe.data.datasets[0].data = top.map(p=>p.sharpe);
+    chartTopSharpe.update();
+  }
+}
+
+function renderPairDetail(p) {
+  document.getElementById('p-name').textContent = `${p.ticker1} / ${p.ticker2}`;
+  const action = p.signal === 'Long Spread' ? `Long ${p.ticker1}, Short ${p.ticker2}` :
+                 p.signal === 'Short Spread' ? `Short ${p.ticker1}, Long ${p.ticker2}` :
+                 'Wait for divergence (|z| ≥ 2)';
+  const expDays = Math.max(2, Math.round(p.hl * 0.7));
+  document.getElementById('pairDetail').innerHTML = `
+    <div class="row"><span>Sector</span><span>${p.sector}</span></div>
+    <div class="row"><span>Correlation (returns)</span><span class="mono">${p.corr.toFixed(3)}</span></div>
+    <div class="row"><span>Hedge Ratio (β)</span><span class="mono">${p.beta.toFixed(2)}</span></div>
+    <div class="row"><span>Current Z-Score</span><span>${zBadge(p.z)}</span></div>
+    <div class="row"><span>Half-Life</span><span class="mono">${p.hl} days</span></div>
+    <div class="row"><span>Backtest Sharpe</span><span class="mono" style="color:var(--accent)"><strong>${p.sharpe.toFixed(2)}</strong></span></div>
+    <div class="row"><span>Signal</span><span>${signalPill(p.signal)}</span></div>
+    <div class="row"><span>Suggested Action</span><span style="text-align:right">${action}</span></div>
+    <div class="row"><span>Expected Reversion</span><span class="mono">~${expDays} days</span></div>
+  `;
+
+  // Spread chart with bands
+  const labels = p.spread.map((_,i)=> -p.spread.length + i + 1);
+  const mean = p.spread.reduce((s,x)=>s+x,0)/p.spread.length;
+  const sd = Math.sqrt(p.spread.reduce((s,x)=>s+(x-mean)**2,0)/p.spread.length);
+  const upper = new Array(p.spread.length).fill(mean + 2*sd);
+  const lower = new Array(p.spread.length).fill(mean - 2*sd);
+  const center = new Array(p.spread.length).fill(mean);
+
+  const spreadData = {
+    labels,
+    datasets: [
+      { label: 'Spread', data: p.spread, borderColor: 'rgba(78,161,255,1)', backgroundColor: 'rgba(78,161,255,0.1)', fill: true, borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
+      { label: '+2σ', data: upper, borderColor: 'rgba(248,113,113,0.7)', borderDash:[5,5], borderWidth: 1, pointRadius: 0 },
+      { label: 'μ',  data: center, borderColor: 'rgba(138,150,184,0.6)', borderDash:[3,3], borderWidth: 1, pointRadius: 0 },
+      { label: '-2σ', data: lower, borderColor: 'rgba(52,211,153,0.7)', borderDash:[5,5], borderWidth: 1, pointRadius: 0 }
+    ]
+  };
+  if (!chartSpread) {
+    chartSpread = new Chart(document.getElementById('chartSpread'), {
+      type: 'line', data: spreadData,
+      options: {
+        maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 } }, position: 'top' }, title: { display: true, text: 'Spread (A − β·B)', color: '#e6ecff' } },
+        scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } }, y: { grid: { color: '#1f294a' } } }
+      }
+    });
+  } else {
+    chartSpread.data = spreadData; chartSpread.update();
+  }
+
+  // Z-Score history
+  const zUpper = new Array(p.zSeries.length).fill(2);
+  const zLower = new Array(p.zSeries.length).fill(-2);
+  const zZero  = new Array(p.zSeries.length).fill(0);
+  const zData = {
+    labels,
+    datasets: [
+      { label: 'Z', data: p.zSeries, borderColor: 'rgba(124,92,255,1)', backgroundColor: 'rgba(124,92,255,0.1)', fill: true, pointRadius: 0, borderWidth: 1.5, tension: 0.2 },
+      { label: '+2σ', data: zUpper, borderColor: 'rgba(248,113,113,0.6)', borderDash:[5,5], borderWidth: 1, pointRadius: 0 },
+      { label: '0', data: zZero, borderColor: 'rgba(138,150,184,0.5)', borderDash:[3,3], borderWidth: 1, pointRadius: 0 },
+      { label: '-2σ', data: zLower, borderColor: 'rgba(52,211,153,0.6)', borderDash:[5,5], borderWidth: 1, pointRadius: 0 }
+    ]
+  };
+  if (!chartZHistory) {
+    chartZHistory = new Chart(document.getElementById('chartZHistory'), {
+      type: 'line', data: zData,
+      options: {
+        maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, title: { display: true, text: 'Z-Score history', color: '#e6ecff' } },
+        scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } }, y: { grid: { color: '#1f294a' }, suggestedMin: -4, suggestedMax: 4 } }
+      }
+    });
+  } else {
+    chartZHistory.data = zData; chartZHistory.update();
+  }
+}
+
+/* stat filter handlers */
+document.getElementById('sf-search').addEventListener('input', e => { sFilters.search = e.target.value; renderPairTable(); });
+document.getElementById('sf-sector').addEventListener('change', e => { sFilters.sector = e.target.value; renderPairTable(); });
+document.getElementById('sf-signal').addEventListener('change', e => { sFilters.signal = e.target.value; renderPairTable(); });
+document.getElementById('sf-z').addEventListener('input', e => {
+  sFilters.minZ = +e.target.value;
+  document.getElementById('sf-z-val').textContent = (+e.target.value).toFixed(1);
+  renderPairTable();
+});
+document.getElementById('sf-corr').addEventListener('input', e => {
+  sFilters.minCorr = +e.target.value;
+  document.getElementById('sf-corr-val').textContent = (+e.target.value).toFixed(2);
+  renderPairTable();
+});
+document.getElementById('sf-reset').addEventListener('click', () => {
+  Object.assign(sFilters, { search:'', sector:'', signal:'', minZ:0, minCorr:0.5 });
+  document.getElementById('sf-search').value = '';
+  document.getElementById('sf-sector').value = '';
+  document.getElementById('sf-signal').value = '';
+  document.getElementById('sf-z').value = 0;
+  document.getElementById('sf-corr').value = 0.5;
+  document.getElementById('sf-z-val').textContent = '0.0';
+  document.getElementById('sf-corr-val').textContent = '0.50';
+  renderPairTable();
+});
+document.querySelectorAll('#pairTable th').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (pairSort.key === key) pairSort.dir *= -1;
+    else { pairSort.key = key; pairSort.dir = -1; }
+    renderPairTable();
+  });
+});
+
+/* ============================================================
+   INITIAL RENDER
+   ============================================================ */
+renderMergerTable();
+// Auto-select first deal/pair
+selectedDealId = applyMergerFilters()[0]?.id ?? null;
+if (selectedDealId !== null) renderDealDetail(MERGER_DEALS[selectedDealId]);
+renderMergerTable();
+
+renderPairTable();
+selectedPairId = applyPairFilters()[0]?.id ?? null;
+if (selectedPairId !== null) renderPairDetail(STAT_PAIRS[selectedPairId]);
+renderPairTable();
+
+</script>
+</body>
+</html>
