@@ -1,5 +1,7 @@
 # Arbitrage Opportunities Dashboard
 
+**Live demo:** https://wchawkins.github.io/arbitrage-dashboard/
+
 A self-contained dashboard for screening **Merger Arbitrage** and **Statistical Arbitrage** opportunities. The front-end is a single HTML file with Chart.js visualizations; a small Python pipeline refreshes live prices from Yahoo Finance and recomputes spreads, z-scores, hedge ratios, half-lives, and a simple-strategy Sharpe.
 
 ## What's inside
@@ -11,7 +13,7 @@ A self-contained dashboard for screening **Merger Arbitrage** and **Statistical 
 
 ```
 .
-├── arbitrage_dashboard.html   # the dashboard UI
+├── index.html   # the dashboard UI
 ├── update_data.py             # pipeline: yfinance → metrics → data.js
 ├── pairs_config.json          # stat-arb pair watchlist (editable)
 ├── deals_config.json          # merger-arb deal list (editable)
@@ -31,7 +33,7 @@ python update_data.py
 
 # 3. Serve the dashboard (browsers block file:// script loads)
 python -m http.server 8765
-# Open http://127.0.0.1:8765/arbitrage_dashboard.html
+# Open http://127.0.0.1:8765/index.html
 ```
 
 ## Keeping it updated
